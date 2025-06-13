@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>철권</title>
+    <style>
+        body {
+            margin: 0;
+            background: #222;
+            color: white;
+            font-family: 'Arial Black', Arial, sans-serif;
+            user-select: none;
+        }
+
+        #game {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            margin: 30px auto;
+            background: linear-gradient(to top, #666 0%, #999 100%);
+            border: 3px solid #fff;
+            overflow: hidden;
+        }
+
+        .player {
+            position: absolute;
+            bottom: 50px;
+            width: 80px;
+            height: 100px;
+            border-radius: 15px;
+            box-shadow: 0 0 10px;
+            transition: left 0.1s, bottom 0.1s;
+        }
+
+        /* 플레이어1 고정 녹색 */
+        #player1 {
+            background: linear-gradient(to bottom, #3eb489 0%, #2c7a62 100%);
+            box-shadow: 0 0 10px #3eb489;
+        }
+
+        /* 플레이어2 고정 빨간색 */
+        #player2 {
+            background: linear-gradient(to bottom, #d94444 0%, #8b2626 100%);
+            box-shadow: 0 0 10px #d94444;
+        }
+
+        .player .face {
+            position: absolute;
+            top: 8px;
+            width: 40px;
+            height: 30px;
+            background: #fff;
+            border-radius: 50%;
+        }
+
+        /* 방향별 얼굴 위치만 다르게 */
+        #player1.left .face {
+            left: 10px;
+        }
+
+        #player1.right .face {
+            right: 10px;
+        }
+
+        #player2.left .face {
+            left: 10px;
+        }
+
+        #player2.right .face {
+            right: 10px;
+        }
+
+        .health-bar {
+            position: absolute;
+            top: 10px;
+            width: 300px;
+            height: 25px;
+            background: #444;
+            border: 2px solid #fff;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        #health1 {
+            left: 50px;
+        }
+
+        #health2 {
+            right: 50px;
+        }
+
+        .health-fill {
+            height: 100%;
+            background: #3eb489;
+            transition: width 0.3s;
+        }
+
+        #health2 .health-fill {
+            background: #d94444;
+        }
+
+        .player-name {
+            position: absolute;
+            top: 40px;
+            width: 300px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: white;
+            text-shadow: 0 0 5px black;
+        }
+
+        #name1 {
+            left: 50px;
+        }
+
+        #name2 {
+            right: 50px;
+        }
+
+        .projectile {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        #instructions {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        #gameOverMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 64px;
+            font-weight: bold;
+            color: yellow;
+            text-shadow: 0 0 10px black;
+            display: none;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <div id="player1" class="player left" style="left:100px;">
+            <div class="face"></div>
+        </div>
+        <div id="player2" class="player right" style="left:620px;">
+            <div class="face"></div>
+        </div>
+
+        <div class="health-bar" id="health1">
+            <div class="health-fill" id="p1-health" style="width: 100%;"></div>
+        </div>
+        <div class="player-name" id="name1">플레이어 1</div>
+
+        <div class="health-bar" id="health2">
+            <div class="health-fill" id="p2-health" style="width: 100%;"></div>
+        </div>
+        <div class="player-name" id="name2">플레이어 2</div>
+
+        <div id="gameOverMessage"></div>
+    </div>
+    <div id="instructions">
+        플레이어1 : A , D 이동 / W 점프 / F 약공격 / G 중공격 / H 강공격<br />
+        플레이어2 : ← , → 이동 / ↑ 점프 / M 약공격 / , 중공격 / . 강공격<br />
+        ***게임 종료 시 스페이스바 누르면 재시작***
+    </div>
+    <script>
+        const p1 = document.getElementById('player1');
+        const p2 = document.getElementById('player2');
+        const p1HealthBar = document.getElementById('p1-health');
+        const p2HealthBar = document.getElementById('p2-health');
+        const game = document.getElementById('game');
+        const gameOverMessage = document.getElementById('gameOverMessage');
+
+        const gameWidth = 800;
+        const playerWidth = 80;
+        const playerHeight = 100;
+        const groundLevel = 50;
+
+        let p1X = 100;
+        let p2X = 620;
+        let p1Y = groundLevel;
+        let p2Y = groundLevel;
+
+        let p1Health = 100;
+        let p2Health = 100;
+
+        const keys = {};
+
+        const moveSpeed = 8;
+        const jumpSpeed = 15;
+        const gravity = 1;
+
+        let p1VY = 0;
+        let p2VY = 0;
+
+        let p1Projectile = null;
+        let p2Projectile = null;
+
+        const projectileSpeed = 12;
+        const attackCooldownTime = 600;
+        let attackCooldown1 = false;
+        let attackCooldown2 = false;
+
+        let gameOver = false;
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+
+            if (!gameOver) {
+                // 플레이어1 공격키: F, G, H
+                if (key === 'f') playerAttack(1, 'light');
+                if (key === 'g') playerAttack(1, 'medium');
+                if (key === 'h') playerAttack(1, 'heavy');
+
+                // 플레이어2 공격키: m, ,, .
+                if (key === 'm') playerAttack(2, 'light');
+                if (key === ',') playerAttack(2, 'medium');
+                if (key === '.') playerAttack(2, 'heavy');
+
+                // 점프
+                if (key === 'w') playerJump(1);
+                if (key === 'arrowup') playerJump(2);
+            }
+
+            // 게임오버 상태에서 스페이스 누르면 재시작
+            if (gameOver && e.code === 'Space') {
+                resetGame();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = false;
+        });
+
+        function playerAttack(playerNum, type) {
+            if (playerNum === 1) {
+                if (attackCooldown1) return;
+                attackCooldown1 = true;
+                createProjectile(1, type);
+                setTimeout(() => attackCooldown1 = false, attackCooldownTime);
+            } else {
+                if (attackCooldown2) return;
+                attackCooldown2 = true;
+                createProjectile(2, type);
+                setTimeout(() => attackCooldown2 = false, attackCooldownTime);
+            }
+        }
+
+        function createProjectile(playerNum, type) {
+            let damage = 0;
+            let size = 30;
+            let color = 'yellow';
+
+            if (type === 'light') {
+                damage = 8;
+                size = 30;
+                color = 'yellow';
+            } else if (type === 'medium') {
+                damage = 14;
+                size = 45;
+                color = '#FFA500';
+            } else if (type === 'heavy') {
+                damage = 22;
+                size = 60;
+                color = '#FF4444';
+            }
+
+            let projX, projY, speedX;
+            let facingRight;
+
+            if (playerNum === 1) {
+                facingRight = p1.classList.contains('right');
+                if (facingRight) {
+                    projX = p1X + playerWidth;
+                    speedX = projectileSpeed;
+                } else {
+                    projX = p1X - size;
+                    speedX = -projectileSpeed;
+                }
+                projY = p1Y + 50;
+                if (p1Projectile) {
+                    game.removeChild(p1Projectile.el);
+                }
+                const projEl = document.createElement('div');
+                projEl.classList.add('projectile');
+                projEl.style.width = size + 'px';
+                projEl.style.height = size + 'px';
+                projEl.style.backgroundColor = color;
+                projEl.style.left = projX + 'px';
+                projEl.style.bottom = projY + 'px';
+                game.appendChild(projEl);
+                p1Projectile = { el: projEl, x: projX, y: projY, speedX, damage, size };
+            } else {
+                facingRight = p2.classList.contains('right');
+                if (facingRight) {
+                    projX = p2X + playerWidth;
+                    speedX = projectileSpeed;
+                } else {
+                    projX = p2X - size;
+                    speedX = -projectileSpeed;
+                }
+                projY = p2Y + 50;
+                if (p2Projectile) {
+                    game.removeChild(p2Projectile.el);
+                }
+                const projEl = document.createElement('div');
+                projEl.classList.add('projectile');
+                projEl.style.width = size + 'px';
+                projEl.style.height = size + 'px';
+                projEl.style.backgroundColor = color;
+                projEl.style.left = projX + 'px';
+                projEl.style.bottom = projY + 'px';
+                game.appendChild(projEl);
+                p2Projectile = { el: projEl, x: projX, y: projY, speedX, damage, size };
+            }
+        }
+
+        function updateHealth() {
+            if (p1Health < 0) p1Health = 0;
+            if (p2Health < 0) p2Health = 0;
+
+            p1HealthBar.style.width = p1Health + '%';
+            p2HealthBar.style.width = p2Health + '%';
+
+            if (p1Health === 0 || p2Health === 0) {
+                gameOver = true;
+                let winnerText = p1Health === 0 ? "플레이어 2<br>승리! KO" : "플레이어 1<br>승리! KO";
+                gameOverMessage.style.display = 'block';
+                gameOverMessage.innerHTML = winnerText;
+            }
+        }
+
+        function resetGame() {
+            p1Health = 100;
+            p2Health = 100;
+            updateHealth();
+
+            // 위치 초기화
+            p1X = 100;
+            p2X = 620;
+            p1Y = groundLevel;
+            p2Y = groundLevel;
+
+            // 속도 초기화
+            p1VY = 0;
+            p2VY = 0;
+
+            // 게임오버 상태 초기화
+            gameOver = false;
+            gameOverMessage.style.display = 'none';
+
+            // 투사체 제거
+            if (p1Projectile) {
+                game.removeChild(p1Projectile.el);
+                p1Projectile = null;
+            }
+            if (p2Projectile) {
+                game.removeChild(p2Projectile.el);
+                p2Projectile = null;
+            }
+
+            // 플레이어 방향 및 클래스 초기화 (준비 자세)
+            p1.classList.remove('right');
+            p1.classList.add('left');
+            p1.style.left = p1X + 'px';
+            p1.style.bottom = p1Y + 'px';
+
+            p2.classList.remove('left');
+            p2.classList.add('right');
+            p2.style.left = p2X + 'px';
+            p2.style.bottom = p2Y + 'px';
+        }
+
+        function updatePlayerPositions() {
+            p1.style.left = p1X + 'px';
+            p1.style.bottom = p1Y + 'px';
+            p2.style.left = p2X + 'px';
+            p2.style.bottom = p2Y + 'px';
+        }
+
+        function checkCollisionProjectile(px, py, targetX, targetY, projSize) {
+            const playerCenterX = targetX + playerWidth / 2;
+            const playerCenterY = targetY + 60;
+
+            const dx = Math.abs(px - playerCenterX);
+            const dy = Math.abs(py - playerCenterY);
+            if (dx < projSize / 2 + playerWidth / 2 && dy < projSize / 2 + playerHeight / 2) {
+                return true;
+            }
+            return false;
+        }
+
+        function checkProjectileHit() {
+            if (p1Projectile) {
+                p1Projectile.x += p1Projectile.speedX;
+                if (p1Projectile.x < 0 || p1Projectile.x > gameWidth) {
+                    game.removeChild(p1Projectile.el);
+                    p1Projectile = null;
+                } else {
+                    p1Projectile.el.style.left = p1Projectile.x + 'px';
+                    // 맞았는지 검사 (플레이어2)
+                    if (checkCollisionProjectile(p1Projectile.x, p1Projectile.y, p2X, p2Y, p1Projectile.size)) {
+                        p2Health -= p1Projectile.damage;
+                        updateHealth();
+                        game.removeChild(p1Projectile.el);
+                        p1Projectile = null;
+                    }
+                }
+            }
+
+            if (p2Projectile) {
+                p2Projectile.x += p2Projectile.speedX;
+                if (p2Projectile.x < 0 || p2Projectile.x > gameWidth) {
+                    game.removeChild(p2Projectile.el);
+                    p2Projectile = null;
+                } else {
+                    p2Projectile.el.style.left = p2Projectile.x + 'px';
+                    // 맞았는지 검사 (플레이어1)
+                    if (checkCollisionProjectile(p2Projectile.x, p2Projectile.y, p1X, p1Y, p2Projectile.size)) {
+                        p1Health -= p2Projectile.damage;
+                        updateHealth();
+                        game.removeChild(p2Projectile.el);
+                        p2Projectile = null;
+                    }
+                }
+            }
+        }
+
+        function playerJump(playerNum) {
+            if (playerNum === 1) {
+                if (p1Y <= groundLevel) {
+                    p1VY = jumpSpeed;
+                }
+            } else {
+                if (p2Y <= groundLevel) {
+                    p2VY = jumpSpeed;
+                }
+            }
+        }
+
+        function applyGravity() {
+            if (p1Y > groundLevel || p1VY > 0) {
+                p1Y += p1VY;
+                p1VY -= gravity;
+                if (p1Y < groundLevel) p1Y = groundLevel;
+            }
+
+            if (p2Y > groundLevel || p2VY > 0) {
+                p2Y += p2VY;
+                p2VY -= gravity;
+                if (p2Y < groundLevel) p2Y = groundLevel;
+            }
+        }
+
+        function movePlayers() {
+            // 플레이어1 이동 (A, D)
+            if (keys['a']) {
+                p1X -= moveSpeed;
+                if (p1X < 0) p1X = 0;
+                p1.classList.remove('right');
+                p1.classList.add('left');
+            }
+            if (keys['d']) {
+                p1X += moveSpeed;
+                if (p1X > gameWidth - playerWidth) p1X = gameWidth - playerWidth;
+                p1.classList.remove('left');
+                p1.classList.add('right');
+            }
+
+            // 플레이어2 이동 (←, →)
+            if (keys['arrowleft']) {
+                p2X -= moveSpeed;
+                if (p2X < 0) p2X = 0;
+                p2.classList.remove('right');
+                p2.classList.add('left');
+            }
+            if (keys['arrowright']) {
+                p2X += moveSpeed;
+                if (p2X > gameWidth - playerWidth) p2X = gameWidth - playerWidth;
+                p2.classList.remove('left');
+                p2.classList.add('right');
+            }
+        }
+
+        function gameLoop() {
+            if (!gameOver) {
+                movePlayers();
+                applyGravity();
+                updatePlayerPositions();
+                checkProjectileHit();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        resetGame();
+        gameLoop();
+    </script>
+</body>
+</html>
